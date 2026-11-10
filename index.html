@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
 <title>Zona Pro Boxing</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<script src="config.js"></script>
 <style>:root{color-scheme:light}html{padding-block:env(safe-area-inset-top,0px) env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
@@ -96,13 +98,31 @@ td small{display:block;color:var(--muted);font-weight:400;font-size:12px}
 .status{margin:0;font-size:13px;color:var(--muted);min-height:1.2em}
 .day{font:600 13px var(--font-body);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
 .view{display:none}.view.on{display:block}
+.login{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;place-items:center;padding:16px}
+.login[hidden]{display:none}
+.login .panel{width:100%;max-width:400px}
+.login p{margin:0 0 12px;color:var(--muted);font-size:14px}
+.hdr-right{display:flex;align-items:center;gap:10px}
 @media (prefers-reduced-motion:no-preference){.view.on{animation:fade .18s ease-out}@keyframes fade{from{opacity:.4}to{opacity:1}}}
 </style>
+
+<div class="login" id="login" hidden>
+  <div class="panel">
+    <h2>Zona Pro Boxing</h2>
+    <p>Ingresa la clave de acceso para ver y registrar estudiantes, asistencia y pagos.</p>
+    <form id="f-login" autocomplete="off">
+      <label id="l-url-row">Dirección de Google Sheets (URL de la aplicación web)<input id="l-url" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
+      <label>Clave de acceso<input id="l-key" type="password" autocomplete="current-password" required></label>
+      <p class="msg err" id="l-msg"></p>
+      <div class="actions"><button class="primary" type="submit" id="l-btn">Entrar</button></div>
+    </form>
+  </div>
+</div>
 
 <div class="wrap">
   <header class="top">
     <h1>Zona Pro Boxing<small>Control de estudiantes</small></h1>
-    <div class="sync" id="sync" role="status">Conectando…</div>
+    <div class="hdr-right"><div class="sync" id="sync" role="status">Conectando…</div><button type="button" class="link" id="b-logout">Cerrar sesión</button></div>
   </header>
   <nav class="tabs" aria-label="Secciones">
     <a href="#estudiantes" data-tab="estudiantes">Estudiantes <span class="count" id="c-est">0</span></a>
@@ -259,8 +279,7 @@ td small{display:block;color:var(--muted);font-weight:400;font-size:12px}
 var MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 var DIAS=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 var PLAN_MESES={Mensual:1,Trimestral:3,Semestral:6};
-var S={students:[],payments:[],days:[],tab:"estudiantes",estFilter:"todos",cierre:{preset:"mes",from:"",to:""},venFilter:"vencidos",editing:null,loaded:{s:false,p:false,a:false},canWrite:true};
-var db=null;
+var S={students:[],payments:[],days:[],tab:"estudiantes",attRows:[],estFilter:"todos",cierre:{preset:"mes",from:"",to:""},venFilter:"vencidos",editing:null,loaded:{s:false,p:false,a:false}};
 var $=function(id){return document.getElementById(id)};
 function esc(t){return String(t==null?"":t).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function pad(n){return n<10?"0"+n:""+n}
@@ -437,7 +456,7 @@ function showAsiInfo(){
 
 /* ---------- toast-like messages ---------- */
 function say(id,txt,ok){var el=$(id);el.className="msg "+(ok?"ok":"err");el.textContent=txt;if(ok)setTimeout(function(){if(el.textContent===txt)el.textContent=""},3500)}
-function guard(id){if(!db){say(id,"No hay conexión con la base de datos. Recarga la página.");return false}if(!S.canWrite){say(id,"Tu acceso es de solo lectura.");return false}return true}
+function guard(id){if(!API.key){say(id,"Inicia sesión para guardar.");return false}return true}
 function fail(id,e){say(id,"No se pudo guardar"+(e&&e.code?" ("+e.code+")":"")+". Intenta de nuevo.")}
 
 /* ---------- estudiantes ---------- */
@@ -458,7 +477,7 @@ $("f-est").addEventListener("submit",function(ev){
   var prev=S.students.filter(function(s){return s.id===id})[0]||{};
   data.id=id;data.notas=prev.notas||"";
   var wasEdit=!!S.editing;
-  db.doc("students/"+id).set(data).then(function(){say("m-est",wasEdit?"Cambios guardados.":"Estudiante registrado.",true);resetEst()}).catch(function(e){fail("m-est",e)});
+  saveRow("students",data).then(function(){say("m-est",wasEdit?"Cambios guardados.":"Estudiante registrado.",true);resetEst()}).catch(function(e){fail("m-est",e)});
 });
 $("q-est").addEventListener("input",renderEstudiantes);
 $("t-est").addEventListener("click",function(e){
@@ -485,17 +504,15 @@ $("f-asi").addEventListener("submit",function(ev){
   var fecha=todayISO(),key=id+"__"+hora;
   var day=S.days.filter(function(d){return d.id===fecha})[0];
   if(day&&day.entries&&day.entries[key]&&!day.entries[key].deleted){say("m-asi","Esa asistencia ya está registrada hoy a las "+hora+".");return}
-  var entry={studentId:id,nombre:fullName(s),hora:hora,deleted:false},patch={fecha:fecha,entries:{}};patch.entries[key]=entry;
-  var ref=db.doc("attendance/"+fecha);
-  ref.update(patch).catch(function(e){if(e&&e.code==="invalid_argument")return ref.set(patch);throw e})
+  saveRow("attendance",{id:fecha+"_"+id+"_"+hora,studentId:id,nombre:fullName(s),fecha:fecha,hora:hora})
     .then(function(){say("m-asi",fullName(s)+" · "+hora+" registrada.",true);$("a-st").value="";$("a-q").value="";fillSelect($("a-st"),"",false);showAsiInfo()})
     .catch(function(e){fail("m-asi",e)});
 });
 $("asi-list").addEventListener("click",function(e){
   var b=e.target.closest("[data-delasi]");if(!b)return;
   if(!armed(b))return;
-  var p=b.dataset.delasi.split("|"),patch={entries:{}};patch.entries[p[1]]={deleted:true};
-  db.doc("attendance/"+p[0]).update(patch).catch(function(){});
+  var p=b.dataset.delasi.split("|");
+  removeRow("attendance",p[0]+"_"+p[1].replace("__","_")).catch(function(){setSync("No se pudo eliminar. Intenta de nuevo.",true)});
 });
 function armed(b){
   if(b.dataset.armed){return true}
@@ -519,8 +536,9 @@ $("f-pag").addEventListener("submit",function(ev){
   var pid=fecha+"_"+id+"_"+Date.now().toString(36);
   var pay={studentId:id,nombre:fullName(s),valor:val,metodo:$("p-met").value,fecha:fecha,tipoPlan:$("p-plan").value,entrenamiento:$("p-ent").value.trim()};
   var plan=$("p-plan").value;
-  db.doc("payments/"+pid).set(pay).then(function(){
-    if(!s.fechaPago||fecha>=s.fechaPago)return db.doc("students/"+id).update({fechaPago:fecha,tipoPlan:plan});
+  pay.id=pid;
+  saveRow("payments",pay).then(function(){
+    if(!s.fechaPago||fecha>=s.fechaPago)return saveRow("students",{id:id,fechaPago:fecha,tipoPlan:plan});
   }).then(function(){
     say("m-pag","Pago de "+fullName(s)+" registrado.",true);$("p-st").value="";$("p-q").value="";$("p-val").value="";$("p-ent").value="";$("p-fecha").value=todayISO();fillSelect($("p-st"),"",false);
   }).catch(function(e){fail("m-pag",e)});
@@ -529,10 +547,10 @@ $("cie-list").addEventListener("click",function(e){
   var b=e.target.closest("[data-delpag]");if(!b)return;
   if(!armed(b))return;
   var id=b.dataset.delpag,p=S.payments.filter(function(x){return x.id===id})[0];if(!p)return;
-  db.doc("payments/"+id).delete().then(function(){
+  removeRow("payments",id).then(function(){
     var rest=S.payments.filter(function(x){return x.studentId===p.studentId&&x.id!==id}).sort(function(a,b){return b.fecha.localeCompare(a.fecha)});
     var s=S.students.filter(function(x){return x.id===p.studentId})[0];
-    if(s&&s.fechaPago===p.fecha&&rest.length)return db.doc("students/"+s.id).update({fechaPago:rest[0].fecha,tipoPlan:rest[0].tipoPlan||s.tipoPlan});
+    if(s&&s.fechaPago===p.fecha&&rest.length)return saveRow("students",{id:s.id,fechaPago:rest[0].fecha,tipoPlan:rest[0].tipoPlan||s.tipoPlan});
   }).catch(function(){});
 });
 
@@ -555,28 +573,78 @@ function showTab(){
 window.addEventListener("hashchange",showTab);
 if(!location.hash){try{var t0=localStorage.getItem("zpb-tab");if(t0)location.hash=t0}catch(e){}}
 
-/* ---------- data ---------- */
-var loadTimer=null,lastDay=todayISO();
-function setSync(txt,err){var el=$("sync");el.textContent=txt;el.className="sync"+(err?" err":"")}
-function checkLoaded(){
-  if(S.loaded.s&&S.loaded.p&&S.loaded.a){clearTimeout(loadTimer);setSync("Datos al día · "+S.students.length+" estudiantes")}
+/* ---------- conexión con Google Sheets ---------- */
+var API={url:"",key:""};
+function lsGet(k){try{return localStorage.getItem(k)||""}catch(e){return""}}
+function lsSet(k,v){try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}}
+function api(action,payload){
+  var body=Object.assign({key:API.key,action:action},payload||{});
+  return fetch(API.url,{method:"POST",body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(j){
+    if(!j||!j.ok){var e=new Error((j&&j.error)||"error");e.code=(j&&j.error)||"error";throw e}
+    return j;
+  });
 }
-function connect(){
-  loadTimer=setTimeout(function(){if(!(S.loaded.s&&S.loaded.p&&S.loaded.a))setSync("No se pueden alcanzar los datos todavía. Puede que lo que ves no esté al día.",true)},10000);
-  var onErr=function(e){setSync("No se pudo leer la base de datos"+(e&&e.code?" ("+e.code+")":""),true)};
-  db.collection("students").onSnapshot(function(snap){S.students=snap.docs.map(function(d){return Object.assign({},d.data(),{id:d.id})});S.loaded.s=true;renderAll();checkLoaded()},onErr);
-  db.collection("payments").onSnapshot(function(snap){S.payments=snap.docs.map(function(d){return Object.assign({},d.data(),{id:d.id})});S.loaded.p=true;renderAll();checkLoaded()},onErr);
-  db.collection("attendance").onSnapshot(function(snap){S.days=snap.docs.map(function(d){return Object.assign({},d.data(),{id:d.id})});S.loaded.a=true;renderAll();checkLoaded()},onErr);
+function rebuildDays(rows){
+  var m={};
+  rows.forEach(function(r){var d=m[r.fecha]||(m[r.fecha]={id:r.fecha,fecha:r.fecha,entries:{}});d.entries[r.studentId+"__"+r.hora]={studentId:r.studentId,nombre:r.nombre,hora:r.hora,deleted:false}});
+  return Object.keys(m).map(function(k){return m[k]});
+}
+function listOf(table){return table==="students"?"students":table==="payments"?"payments":"attRows"}
+function afterChange(){S.days=rebuildDays(S.attRows);renderAll()}
+function saveRow(table,row){
+  return api("upsert",{table:table,row:row}).then(function(){
+    var k=listOf(table),i=S[k].findIndex(function(x){return x.id===row.id});
+    if(i>-1)S[k][i]=Object.assign({},S[k][i],row);else S[k].push(Object.assign({},row));
+    afterChange();
+  });
+}
+function removeRow(table,id){
+  return api("delete",{table:table,id:id}).then(function(){var k=listOf(table);S[k]=S[k].filter(function(x){return x.id!==id});afterChange()});
+}
+function hhmm(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes())}
+function setSync(txt,err){var el=$("sync");el.textContent=txt;el.className="sync"+(err?" err":"")}
+function load(){
+  return api("list").then(function(j){
+    S.students=j.students||[];S.payments=j.payments||[];S.attRows=j.attendance||[];S.days=rebuildDays(S.attRows);
+    S.loaded.s=S.loaded.p=S.loaded.a=true;renderAll();
+    setSync("Datos al día · "+S.students.length+" estudiantes · "+hhmm());
+    return true;
+  }).catch(function(e){
+    if(e.code==="clave"){API.key="";lsSet("zpb-key",null);showLogin("La clave no es correcta.")}
+    else setSync("No se pudo conectar con Google Sheets. Revisa tu internet o la dirección.",true);
+    return false;
+  });
+}
+function showLogin(msg){
+  $("login").hidden=false;$("l-url-row").hidden=!!window.ZPB_API_URL;
+  $("l-url").value=API.url||"";$("l-key").value="";$("l-msg").textContent=msg||"";$("l-btn").disabled=false;
+  setSync("Sin sesión",true);
+}
+var polling=false;
+function startPolling(){
+  if(polling)return;polling=true;
+  setInterval(function(){if(!document.hidden&&API.key)load()},30000);
   setInterval(function(){var t=todayISO();if(t!==lastDay){lastDay=t;$("p-fecha").value=t;renderAll()}},60000);
 }
+var lastDay=todayISO();
+$("f-login").addEventListener("submit",function(ev){
+  ev.preventDefault();
+  var url=(window.ZPB_API_URL||$("l-url").value).trim(),key=$("l-key").value.trim();
+  if(!url||!key){$("l-msg").textContent="Completa la dirección y la clave.";return}
+  API.url=url;API.key=key;$("l-btn").disabled=true;$("l-msg").textContent="";
+  load().then(function(ok){
+    if(ok){lsSet("zpb-url",window.ZPB_API_URL?null:url);lsSet("zpb-key",key);$("login").hidden=true;startPolling()}
+    else if(API.key){$("l-btn").disabled=false;$("l-msg").textContent="No se pudo conectar. Revisa la dirección.";}
+    else $("l-btn").disabled=false;
+  });
+});
+$("b-logout").addEventListener("click",function(){
+  API.key="";lsSet("zpb-key",null);S.students=[];S.payments=[];S.attRows=[];S.days=[];S.loaded.s=S.loaded.p=S.loaded.a=false;renderAll();showLogin("");
+});
 resetEst();showTab();
 D={rows:[],att:[],last:{}};renderAll();
-Promise.all([window.claude&&window.claude.use?window.claude.use("db"):null,window.claude&&window.claude.use?window.claude.use("user"):null]).then(function(r){
-  db=r[0];
-  if(!db){setSync("Sin conexión a la base de datos en esta vista.",true);return}
-  if(r[1]&&r[1].can){try{Promise.resolve(r[1].can("data.write")).then(function(v){if(v===false){S.canWrite=false;setSync("Solo lectura",false)}})}catch(e){}}
-  connect();
-}).catch(function(){setSync("Sin conexión a la base de datos en esta vista.",true)});
+API.url=window.ZPB_API_URL||lsGet("zpb-url");API.key=lsGet("zpb-key");
+if(API.url&&API.key){load().then(function(ok){if(ok)startPolling()})}else showLogin("");
 })();
 </script>
 
