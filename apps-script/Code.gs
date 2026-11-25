@@ -2,8 +2,8 @@
  * Zona Pro Boxing - API para Google Sheets
  *
  * Se pega en Extensiones > Apps Script de la hoja "ZONA PRO BOXING - Base de datos"
- * y se implementa como Aplicación web (ejecutar como: Yo, acceso: Cualquier persona).
- * La página de GitHub se conecta a esta URL y manda siempre la clave de acceso.
+ * y se implementa como Aplicacion web (ejecutar como: Yo, acceso: Cualquier persona).
+ * La pagina de GitHub se conecta a esta URL y manda siempre la clave de acceso.
  *
  * IMPORTANTE: cambia CLAVE antes de implementar. No subas tu clave real a GitHub.
  */
@@ -12,9 +12,11 @@ var CLAVE = 'CAMBIA-ESTA-CLAVE';
 var TABLAS = {
   students:   { hoja: 'Estudiantes', cols: ['id', 'apellidos', 'nombres', 'cedula', 'fechaNacimiento', 'peso', 'estatura', 'nivel', 'fechaInicio', 'tipoPlan', 'fechaPago', 'estado', 'inactivoDesde', 'notas'] },
   payments:   { hoja: 'Pagos',       cols: ['id', 'studentId', 'nombre', 'valor', 'metodo', 'fecha', 'tipoPlan', 'entrenamiento'] },
-  attendance: { hoja: 'Asistencia',  cols: ['id', 'studentId', 'nombre', 'fecha', 'hora'] }
+  attendance: { hoja: 'Asistencia',  cols: ['id', 'studentId', 'nombre', 'fecha', 'hora'] },
+  sales:      { hoja: 'Ventas',      cols: ['id', 'fecha', 'producto', 'cantidad', 'valor', 'metodo', 'cliente'] },
+  inventory:  { hoja: 'Inventario',  cols: ['id', 'producto', 'stock'] }
 };
-var COLUMNAS_NUMERICAS = { valor: true };
+var COLUMNAS_NUMERICAS = { valor: true, cantidad: true, stock: true };
 
 function doGet() {
   return salida({ ok: true, mensaje: 'API de Zona Pro Boxing activa' });
@@ -74,7 +76,7 @@ function hoja(t) {
 }
 
 function formatos(t) {
-  return [t.cols.map(function (c) { return COLUMNAS_NUMERICAS[c] ? '0.00' : '@'; })];
+  return [t.cols.map(function (c) { return COLUMNAS_NUMERICAS[c] ? ((c === 'cantidad' || c === 'stock') ? '0' : '0.00') : '@'; })];
 }
 
 function normalizar(v, col) {
@@ -103,7 +105,9 @@ function listar() {
     ok: true,
     students: leer(TABLAS.students),
     payments: leer(TABLAS.payments),
-    attendance: leer(TABLAS.attendance)
+    attendance: leer(TABLAS.attendance),
+    sales: leer(TABLAS.sales),
+    inventory: leer(TABLAS.inventory)
   };
 }
 
