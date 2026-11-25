@@ -128,6 +128,7 @@ td small{display:block;color:var(--muted);font-weight:400;font-size:12px}
     <a href="#estudiantes" data-tab="estudiantes">Estudiantes <span class="count" id="c-est">0</span></a>
     <a href="#asistencia" data-tab="asistencia">Asistencia</a>
     <a href="#pagos" data-tab="pagos">Pagos</a>
+    <a href="#ventas" data-tab="ventas">Ventas</a>
     <a href="#cierre" data-tab="cierre">Cierre de caja</a>
     <a href="#vencidos" data-tab="vencidos">Vencidos <span class="count bad" id="c-ven" hidden>0</span></a>
     <a href="#inactivos" data-tab="inactivos">Inactivos <span class="count" id="c-ina">0</span></a>
@@ -240,6 +241,45 @@ td small{display:block;color:var(--muted);font-weight:400;font-size:12px}
     </div>
   </section>
 
+  <!-- VENTAS -->
+  <section class="view" id="v-ventas">
+    <div class="grid one">
+      <div class="panel">
+        <h2>Registrar venta</h2>
+        <form id="f-ven" autocomplete="off">
+          <label>Producto<input id="v-prod" list="dl-prod" required placeholder="Elige o escribe un producto"></label>
+          <datalist id="dl-prod"><option value="Guantes de box"><option value="Bucal"><option value="Vendas"><option value="Camiseta grande"><option value="Camiseta pequeña"></datalist>
+          <div class="row2">
+            <label>Cantidad<input id="v-cant" type="number" min="1" step="1" inputmode="numeric" value="1" required></label>
+            <label>Valor total (USD)<input id="v-val" type="number" min="0" step="0.01" inputmode="decimal" required placeholder="15,00"></label>
+          </div>
+          <div class="row2">
+            <label>Método de pago
+              <select id="v-met"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Depósito</option></select>
+            </label>
+            <label>Fecha de venta<input id="v-fecha" type="date" required></label>
+          </div>
+          <label>Cliente (opcional)<input id="v-cli" placeholder="Nombre de quien compra"></label>
+          <p class="msg" id="m-ven"></p>
+          <div class="actions"><button class="primary" type="submit">Registrar venta</button></div>
+        </form>
+      </div>
+    </div>
+    <h2 style="margin:18px 0 8px;font-size:15px">Inventario</h2>
+    <div id="inv-list"></div>
+    <form id="f-inv" class="panel" autocomplete="off" style="margin-top:12px">
+      <h2>Agregar stock</h2>
+      <div class="row2">
+        <label>Producto<select id="i-prod"></select></label>
+        <label>Cantidad que ingresa<input id="i-cant" type="number" min="1" step="1" inputmode="numeric" required placeholder="5"></label>
+      </div>
+      <p class="msg" id="m-inv"></p>
+      <div class="actions"><button class="primary" type="submit">Agregar al inventario</button></div>
+    </form>
+    <h2 style="margin:18px 0 8px;font-size:15px">Ventas recientes</h2>
+    <div id="ven-list"></div>
+  </section>
+
   <!-- CIERRE DE CAJA -->
   <section class="view" id="v-cierre">
     <div class="toolbar">
@@ -279,7 +319,7 @@ td small{display:block;color:var(--muted);font-weight:400;font-size:12px}
 var MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 var DIAS=["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
 var PLAN_MESES={Mensual:1,Trimestral:3,Semestral:6};
-var S={students:[],payments:[],days:[],tab:"estudiantes",attRows:[],estFilter:"todos",cierre:{preset:"mes",from:"",to:""},venFilter:"vencidos",editing:null,loaded:{s:false,p:false,a:false}};
+var S={students:[],payments:[],sales:[],inventory:[],days:[],tab:"estudiantes",attRows:[],estFilter:"todos",cierre:{preset:"mes",from:"",to:""},venFilter:"vencidos",editing:null,loaded:{s:false,p:false,a:false}};
 var $=function(id){return document.getElementById(id)};
 function esc(t){return String(t==null?"":t).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function pad(n){return n<10?"0"+n:""+n}
@@ -343,7 +383,7 @@ function renderAll(){
   $("c-est").textContent=S.students.length;
   var cv=$("c-ven");cv.textContent=n.vencido;cv.hidden=!n.vencido;
   $("c-ina").textContent=n.inactivo;
-  renderEstudiantes();renderAsistencia();renderCierre();renderVencidos(n);renderInactivos();
+  renderEstudiantes();renderAsistencia();renderCierre();renderVentas();renderInventario();renderVencidos(n);renderInactivos();
   fillSelects();
 }
 function chips(host,opts,cur,fn){
@@ -390,6 +430,30 @@ function setPreset(v){
   else if(v==="mes"){var r=monthRange();c.from=r[0];c.to=r[1]}
   else if(v==="todo"){c.from="";c.to=""}
 }
+function ventasTable(rows,emptyTxt){
+  return'<div class="tablebox"><table><thead><tr><th>Producto</th><th class="num">Cant.</th><th class="num">Valor</th><th>Método</th><th>Fecha</th><th>Cliente</th><th></th></tr></thead><tbody>'+
+  (rows.length?rows.map(function(v){return'<tr><td class="name">'+esc(v.producto)+'</td><td class="num">'+(+v.cantidad||1)+'</td><td class="num">'+money(v.valor)+'</td><td>'+esc(v.metodo||"—")+'</td><td>'+fmt(v.fecha)+'</td><td>'+esc(v.cliente||"—")+'</td><td class="num"><button type="button" class="link danger" data-delven="'+esc(v.id)+'">Eliminar</button></td></tr>'}).join(""):emptyRow(7,emptyTxt))+'</tbody></table></div>';
+}
+var PRODUCTOS=["Guantes de box","Bucal","Vendas","Camiseta grande","Camiseta pequeña"];
+function stockOf(id){
+  var inv=S.inventory.filter(function(x){return x.id===id})[0];if(!inv)return null;
+  var sold=0;S.sales.forEach(function(v){if(slug(v.producto)===id)sold+=+v.cantidad||0});
+  return{nombre:inv.producto,base:+inv.stock||0,vendido:sold,disp:(+inv.stock||0)-sold};
+}
+function renderInventario(){
+  var rows=S.inventory.slice().sort(function(a,b){return PRODUCTOS.indexOf(a.producto)-PRODUCTOS.indexOf(b.producto)||a.producto.localeCompare(b.producto,"es")}).map(function(x){return stockOf(x.id)});
+  var h='<div class="tablebox"><table><thead><tr><th>Producto</th><th class="num">Ingresado</th><th class="num">Vendido</th><th class="num">Disponible</th></tr></thead><tbody>'+
+  (rows.length?rows.map(function(r){var low=r.disp<=2;return'<tr><td class="name">'+esc(r.nombre)+'</td><td class="num">'+r.base+'</td><td class="num">'+r.vendido+'</td><td class="num"><b'+(low?' style="color:var(--bad,#e5484d)"':'')+'>'+r.disp+(r.disp<=0?" · agotado":(low?" · poco stock":""))+'</b></td></tr>'}).join(""):emptyRow(4,loadingOr("Aún no hay inventario cargado.")))+'</tbody></table></div>';
+  $("inv-list").innerHTML=h;
+  var sel=$("i-prod"),cur=sel.value,names=PRODUCTOS.slice();
+  S.inventory.forEach(function(x){if(names.indexOf(x.producto)<0)names.push(x.producto)});
+  var o=names.map(function(n){return'<option>'+esc(n)+'</option>'}).join("");
+  if(sel.dataset.o!==o){sel.innerHTML=o;sel.dataset.o=o;if(cur)sel.value=cur}
+}
+function renderVentas(){
+  var rows=S.sales.slice().sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"")||(b.id>a.id?1:-1)}).slice(0,60);
+  $("ven-list").innerHTML=ventasTable(rows,loadingOr("Aún no hay ventas registradas."));
+}
 function renderCierre(){
   var c=S.cierre;if(!c.init){setPreset("mes");c.init=true}
   chips($("chips-cie"),[["hoy","Hoy"],["semana","Esta semana"],["mes","Este mes"],["todo","Todo"]],c.preset,function(v){setPreset(v);renderCierre()});
@@ -397,16 +461,22 @@ function renderCierre(){
   if($("cie-to").value!==c.to)$("cie-to").value=c.to;
   $("cie-label").textContent=(!c.from&&!c.to)?"Todos los pagos registrados":(c.from&&c.to?(c.from===c.to?fmtLong(c.from):"Del "+fmt(c.from)+" al "+fmt(c.to)):(c.from?"Desde el "+fmt(c.from):"Hasta el "+fmt(c.to)));
   var nm={};S.students.forEach(function(s){nm[s.id]=fullName(s)});
-  var list=S.payments.filter(function(p){var f=p.fecha||"";return(!c.from||f>=c.from)&&(!c.to||f<=c.to)})
+  var inR=function(p){var f=p.fecha||"";return(!c.from||f>=c.from)&&(!c.to||f<=c.to)};
+  var list=S.payments.filter(inR)
     .sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"")||(b.id>a.id?1:-1)});
-  var tot=0,by={};list.forEach(function(p){var v=+p.valor||0;tot+=v;var m=p.metodo||"Sin método";by[m]=(by[m]||0)+v});
-  var tiles=[[money(tot),"Total cobrado"],[list.length,"Pagos registrados"]];
+  var vlist=S.sales.filter(inR)
+    .sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"")||(b.id>a.id?1:-1)});
+  var totP=0,totV=0,by={};
+  list.forEach(function(p){var v=+p.valor||0;totP+=v;var m=p.metodo||"Sin método";by[m]=(by[m]||0)+v});
+  vlist.forEach(function(p){var v=+p.valor||0;totV+=v;var m=p.metodo||"Sin método";by[m]=(by[m]||0)+v});
+  var tiles=[[money(totP+totV),"Total cobrado"],[money(totP),"Pagos de planes ("+list.length+")"],[money(totV),"Ventas de productos ("+vlist.length+")"]];
   Object.keys(by).sort().forEach(function(m){tiles.push([money(by[m]),m])});
   var h='<div class="tiles">'+tiles.map(function(t){return'<div class="tile"><b>'+t[0]+'</b><span>'+esc(t[1])+'</span></div>'}).join("")+'</div>';
   var shown=list.slice(0,300);
-  h+='<div class="tablebox"><table><thead><tr><th>Estudiante</th><th class="num">Valor</th><th>Método</th><th>Fecha</th><th>Plan</th><th>Entrenamiento</th><th></th></tr></thead><tbody>'+
+  h+='<h2 style="margin:14px 0 8px;font-size:15px">Pagos de planes</h2><div class="tablebox"><table><thead><tr><th>Estudiante</th><th class="num">Valor</th><th>Método</th><th>Fecha</th><th>Plan</th><th>Entrenamiento</th><th></th></tr></thead><tbody>'+
   (shown.length?shown.map(function(p){return'<tr><td class="name">'+esc(nm[p.studentId]||p.nombre)+'</td><td class="num">'+money(p.valor)+'</td><td>'+esc(p.metodo||"—")+'</td><td>'+fmt(p.fecha)+'</td><td>'+esc(p.tipoPlan||"—")+'</td><td>'+esc(p.entrenamiento||"—")+'</td><td class="num"><button type="button" class="link danger" data-delpag="'+esc(p.id)+'">Eliminar</button></td></tr>'}).join(""):emptyRow(7,loadingOr("No hay pagos en este periodo.")))+'</tbody></table></div>';
   if(list.length>300)h+='<p class="hint" style="margin-top:8px">Se muestran 300 de '+list.length+' pagos; los totales incluyen todos.</p>';
+  h+='<h2 style="margin:18px 0 8px;font-size:15px">Ventas de productos</h2>'+ventasTable(vlist.slice(0,300),loadingOr("No hay ventas en este periodo."));
   $("cie-list").innerHTML=h;
 }
 ["cie-from","cie-to"].forEach(function(id){$(id).addEventListener("change",function(){S.cierre.from=$("cie-from").value;S.cierre.to=$("cie-to").value;S.cierre.preset="custom";renderCierre()})});
@@ -554,6 +624,48 @@ $("cie-list").addEventListener("click",function(e){
   }).catch(function(){});
 });
 
+/* ---------- ventas ---------- */
+$("v-fecha").value=todayISO();
+function lastUnit(prod){
+  var k=norm(prod),r=S.sales.filter(function(v){return norm(v.producto)===k&&+v.cantidad>0&&+v.valor>0}).sort(function(a,b){return(b.fecha||"").localeCompare(a.fecha||"")||(b.id>a.id?1:-1)})[0];
+  return r?(+r.valor/+r.cantidad):0;
+}
+function suggest(){
+  var u=lastUnit($("v-prod").value),c=parseInt($("v-cant").value,10)||1;
+  if(u&&!$("v-val").dataset.touched)$("v-val").value=(u*c).toFixed(2);
+}
+$("v-prod").addEventListener("change",function(){delete $("v-val").dataset.touched;suggest()});
+$("v-cant").addEventListener("input",suggest);
+$("v-val").addEventListener("input",function(){this.dataset.touched="1"});
+$("f-inv").addEventListener("submit",function(ev){
+  ev.preventDefault();if(!guard("m-inv"))return;
+  var prod=$("i-prod").value,n=parseInt($("i-cant").value,10);
+  if(!prod||!(n>0)){say("m-inv","Elige un producto y una cantidad.");return}
+  var id=slug(prod),cur=S.inventory.filter(function(x){return x.id===id})[0];
+  saveRow("inventory",{id:id,producto:prod,stock:(cur?+cur.stock||0:0)+n}).then(function(){
+    say("m-inv","Se agregaron "+n+" de "+prod+" al inventario.",true);$("i-cant").value="";
+  }).catch(function(e){fail("m-inv",e)});
+});
+$("f-ven").addEventListener("submit",function(ev){
+  ev.preventDefault();if(!guard("m-ven"))return;
+  var prod=$("v-prod").value.trim(),cant=parseInt($("v-cant").value,10),val=parseFloat($("v-val").value),fecha=$("v-fecha").value;
+  if(!prod||!fecha||!(cant>0)||isNaN(val)||val<0){say("m-ven","Completa producto, cantidad, valor y fecha.");return}
+  var st=stockOf(slug(prod));
+  if(st&&cant>st.disp){say("m-ven","Solo quedan "+Math.max(st.disp,0)+" de "+st.nombre+" en el inventario.");return}
+  var row={id:fecha+"_"+slug(prod)+"_"+Date.now().toString(36),fecha:fecha,producto:prod,cantidad:cant,valor:val,metodo:$("v-met").value,cliente:$("v-cli").value.trim()};
+  saveRow("sales",row).then(function(){
+    say("m-ven","Venta registrada: "+cant+" × "+prod+" ("+money(val)+").",true);
+    $("v-prod").value="";$("v-cant").value="1";$("v-val").value="";delete $("v-val").dataset.touched;$("v-cli").value="";$("v-fecha").value=todayISO();
+  }).catch(function(e){fail("m-ven",e)});
+});
+function delVenta(e){
+  var b=e.target.closest("[data-delven]");if(!b)return;
+  if(!armed(b))return;
+  removeRow("sales",b.dataset.delven).catch(function(){});
+}
+$("ven-list").addEventListener("click",delVenta);
+$("cie-list").addEventListener("click",delVenta);
+
 /* ---------- ir a pagar desde vencidos / inactivos ---------- */
 document.addEventListener("click",function(e){
   var b=e.target.closest("[data-pay]");if(!b)return;
@@ -563,7 +675,7 @@ document.addEventListener("click",function(e){
 
 /* ---------- tabs ---------- */
 function showTab(){
-  var t=(location.hash||"").slice(1);if(!/^(estudiantes|asistencia|pagos|cierre|vencidos|inactivos)$/.test(t))t="estudiantes";
+  var t=(location.hash||"").slice(1);if(!/^(estudiantes|asistencia|pagos|ventas|cierre|vencidos|inactivos)$/.test(t))t="estudiantes";
   S.tab=t;
   document.querySelectorAll(".view").forEach(function(v){v.classList.toggle("on",v.id==="v-"+t)});
   document.querySelectorAll("nav.tabs a").forEach(function(a){if(a.dataset.tab===t)a.setAttribute("aria-current","page");else a.removeAttribute("aria-current")});
@@ -589,7 +701,7 @@ function rebuildDays(rows){
   rows.forEach(function(r){var d=m[r.fecha]||(m[r.fecha]={id:r.fecha,fecha:r.fecha,entries:{}});d.entries[r.studentId+"__"+r.hora]={studentId:r.studentId,nombre:r.nombre,hora:r.hora,deleted:false}});
   return Object.keys(m).map(function(k){return m[k]});
 }
-function listOf(table){return table==="students"?"students":table==="payments"?"payments":"attRows"}
+function listOf(table){return table==="students"?"students":table==="payments"?"payments":table==="sales"?"sales":table==="inventory"?"inventory":"attRows"}
 function afterChange(){S.days=rebuildDays(S.attRows);renderAll()}
 function saveRow(table,row){
   return api("upsert",{table:table,row:row}).then(function(){
@@ -605,7 +717,7 @@ function hhmm(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes()
 function setSync(txt,err){var el=$("sync");el.textContent=txt;el.className="sync"+(err?" err":"")}
 function load(){
   return api("list").then(function(j){
-    S.students=j.students||[];S.payments=j.payments||[];S.attRows=j.attendance||[];S.days=rebuildDays(S.attRows);
+    S.students=j.students||[];S.payments=j.payments||[];S.sales=j.sales||[];S.inventory=j.inventory||[];S.attRows=j.attendance||[];S.days=rebuildDays(S.attRows);
     S.loaded.s=S.loaded.p=S.loaded.a=true;renderAll();
     setSync("Datos al día · "+S.students.length+" estudiantes · "+hhmm());
     return true;
@@ -639,7 +751,7 @@ $("f-login").addEventListener("submit",function(ev){
   });
 });
 $("b-logout").addEventListener("click",function(){
-  API.key="";lsSet("zpb-key",null);S.students=[];S.payments=[];S.attRows=[];S.days=[];S.loaded.s=S.loaded.p=S.loaded.a=false;renderAll();showLogin("");
+  API.key="";lsSet("zpb-key",null);S.students=[];S.payments=[];S.sales=[];S.inventory=[];S.attRows=[];S.days=[];S.loaded.s=S.loaded.p=S.loaded.a=false;renderAll();showLogin("");
 });
 resetEst();showTab();
 D={rows:[],att:[],last:{}};renderAll();
